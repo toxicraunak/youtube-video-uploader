@@ -4,7 +4,6 @@ import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
 import googleapiclient.http
-import google_auth_httplib2
 from google.oauth2.credentials import Credentials
 
 # Telegram bot token
@@ -26,7 +25,19 @@ def authenticate_youtube():
     else:
         flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
             CLIENT_SECRETS_FILE, SCOPES)
-        credentials = flow.run_local_server()
+        
+        # Set the redirect URI to your VPS domain
+        flow.redirect_uri = "http://freegiftgamed.in/oauth2callback"
+        
+        auth_url, _ = flow.authorization_url(prompt='consent')
+        
+        print(f"Please go to this URL and authorize the application: {auth_url}")
+        
+        # This assumes you're able to handle the callback on your server
+        code = input("Enter the authorization code: ")
+        flow.fetch_token(code=code)
+        
+        credentials = flow.credentials
 
         with open(TOKEN_FILE, 'w') as token:
             token.write(credentials.to_json())
@@ -47,6 +58,7 @@ def send_auth_link(message):
     else:
         flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
             CLIENT_SECRETS_FILE, SCOPES)
+        flow.redirect_uri = "http://freegiftgamed.in/oauth2callback"
         auth_url, _ = flow.authorization_url(prompt='consent')
         
         bot.reply_to(message, f"Authorize this application by visiting this link: {auth_url}")
@@ -100,4 +112,3 @@ def handle_video(message):
 
 if __name__ == "__main__":
     bot.polling()
-    
