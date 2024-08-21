@@ -1,12 +1,14 @@
 import os
+import re
 import threading
+import subprocess
 import telebot
 import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
 import googleapiclient.http
 from google.oauth2.credentials import Credentials
-from flask import Flask, request, redirect, url_for
+from flask import Flask, request
 
 # Telegram bot token
 API_TOKEN = '7461482650:AAF0dme5l8NQX4W0wHXk172o29JqBnTVE0I'
@@ -69,6 +71,8 @@ def send_auth_link(message):
         
         bot.reply_to(message, f"Authorize this application by visiting this link: {auth_url}")
 
+
+
 @bot.message_handler(content_types=['video'])
 def handle_video(message):
     if not os.path.exists(TOKEN_FILE):
@@ -80,16 +84,56 @@ def handle_video(message):
     # Download the video
     video_file_info = bot.get_file(message.video.file_id)
     video_file_path = bot.download_file(video_file_info.file_path)
-    video_file_name = "uploaded_video.mp4"
+    original_video_name = "uploaded_video.mp4"
 
-    with open(video_file_name, 'wb') as video_file:
+    with open(original_video_name, 'wb') as video_file:
         video_file.write(video_file_path)
+
+    # Check the video's resolution and aspect ratio
+    probe = subprocess.run(
+        ['ffmpeg', '-i', original_video_name],
+        capture_output=True,
+        text=True
+    )
+
+    # Extract video width and height from ffmpeg output
+    resolution = None
+    for line in probe.stderr.split('\n'):
+        if 'Video:' in line:
+            resolution_match = re.search(r'(\d+)x(\d+)', line)
+            if resolution_match:
+                width, height = map(int, resolution_match.groups())
+                aspect_ratio = width / height
+                break
+
+    # If the video is not vertical, re-encode it
+    reencoded_file_name = "reencoded_video.mp4"
+    
+    if resolution is None or aspect_ratio != 9 / 16:
+        # Delete the existing file if it exists
+        if os.path.exists(reencoded_file_name):
+            os.remove(reencoded_file_name)
+
+        command = [
+            'ffmpeg',
+            '-i', original_video_name,
+            '-c:v', 'libx264',
+            '-preset', 'slow',
+            '-crf', '18',  # Adjust this for desired quality
+            '-vf', 'scale=1080:1920',  # Ensure it's in the correct resolution for Shorts
+            '-c:a', 'aac',
+            '-b:a', '128k',
+            reencoded_file_name
+        ]
+        subprocess.run(command, check=True)
+    
+    video_file_to_upload = reencoded_file_name if os.path.exists(reencoded_file_name) else original_video_name
 
     # Upload the video as a YouTube Short
     request_body = {
         "snippet": {
             "categoryId": "22",
-            "title": "Top Trending🔥Instagram Reels Videos | All Famous Tik Tok Star💞Today Viral Insta Reels |nsta Reels",
+            "title": "Top Trending 🔥 Instagram Reels Videos | All Famous Tik Tok Star💞Today Viral Insta Reels |nsta Reels",
             "description": """New Tik tok video 
             
 Inst Reel Video 
@@ -149,7 +193,7 @@ song,new,dance,video,song,hindi,punjabi,2022,t series,t series new song,new Song
         }
     }
 
-    media_file = googleapiclient.http.MediaFileUpload(video_file_name, chunksize=-1, resumable=True)
+    media_file = googleapiclient.http.MediaFileUpload(video_file_to_upload, chunksize=10 * 1024 * 1024, resumable=True)
 
     request = youtube.videos().insert(
         part="snippet,status",
@@ -202,4 +246,11 @@ if __name__ == "__main__":
 
     # Start the Flask app
     app.run(host='0.0.0.0', port=80)
-            
+
+
+
+
+
+
+
+
