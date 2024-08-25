@@ -8,7 +8,7 @@ import googleapiclient.discovery
 import googleapiclient.errors
 import googleapiclient.http
 from google.oauth2.credentials import Credentials
-from flask import Flask, request
+from flask import Flask, request, redirect, url_for
 
 # Telegram bot token
 API_TOKEN = '7461482650:AAF0dme5l8NQX4W0wHXk172o29JqBnTVE0I'
@@ -35,7 +35,7 @@ def authenticate_youtube():
             CLIENT_SECRETS_FILE, SCOPES)
         
         # Set the redirect URI to your VPS domain
-        flow.redirect_uri = "http://freegiftgamed.in/oauth2callback"
+        flow.redirect_uri = "https://yt.dark-webs.com/oauth2callback"
         
         auth_url, _ = flow.authorization_url(prompt='consent')
         print(f"Please go to this URL and authorize the application: {auth_url}")
@@ -66,12 +66,10 @@ def send_auth_link(message):
     else:
         flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
             CLIENT_SECRETS_FILE, SCOPES)
-        flow.redirect_uri = "http://freegiftgamed.in/oauth2callback"
+        flow.redirect_uri = "https://yt.dark-webs.com/oauth2callback"
         auth_url, _ = flow.authorization_url(prompt='consent')
         
         bot.reply_to(message, f"Authorize this application by visiting this link: {auth_url}")
-
-
 
 @bot.message_handler(content_types=['video'])
 def handle_video(message):
@@ -133,7 +131,7 @@ def handle_video(message):
     request_body = {
         "snippet": {
             "categoryId": "22",
-            "title": "Top Trending 🔥 Instagram Reels Videos | All Famous Tik Tok Star💞Today Viral Insta Reels |nsta Reels",
+            "title": "Top Trending ?? Instagram Reels Videos | All Famous Tik Tok Star??Today Viral Insta Reels |nsta Reels",
             "description": """New Tik tok video 
             
 Inst Reel Video 
@@ -193,8 +191,8 @@ song,new,dance,video,song,hindi,punjabi,2022,t series,t series new song,new Song
         }
     }
 
-    media_file = googleapiclient.http.MediaFileUpload(video_file_to_upload, chunksize=10 * 1024 * 1024, resumable=True)
-
+    # Insert video
+    media_file = googleapiclient.http.MediaFileUpload(video_file_to_upload, resumable=True)
     request = youtube.videos().insert(
         part="snippet,status",
         body=request_body,
@@ -202,55 +200,44 @@ song,new,dance,video,song,hindi,punjabi,2022,t series,t series new song,new Song
     )
 
     response = None
-
     while response is None:
         status, response = request.next_chunk()
         if status:
-            bot.reply_to(message, f"Upload {int(status.progress() * 100)}% complete")
+            bot.send_message(message.chat.id, f"Uploaded {int(status.progress() * 100)}%.")
 
-    bot.reply_to(message, f"Video uploaded successfully as a YouTube Short with ID: {response['id']}")
+    bot.send_message(message.chat.id, f"Video uploaded successfully! You can view it here: https://www.youtube.com/watch?v={response['id']}")
 
+    # Clean up video files after uploading
+    if os.path.exists(original_video_name):
+        os.remove(original_video_name)
+    if os.path.exists(reencoded_file_name):
+        os.remove(reencoded_file_name)
 
-# Flask routes
-@app.route('/')
-def index():
-    return "Welcome to the OAuth2 Callback Test!"
-
+# Flask route to handle OAuth2 callback
 @app.route('/oauth2callback')
 def oauth2callback():
-    code = request.args.get('code')
-    if code:
-        # Exchange the authorization code for credentials
-        flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-            CLIENT_SECRETS_FILE, SCOPES)
-        flow.redirect_uri = "http://freegiftgamed.in/oauth2callback"
-        flow.fetch_token(code=code)
+    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+        CLIENT_SECRETS_FILE, SCOPES)
+    flow.redirect_uri = url_for('oauth2callback', _external=True)
 
-        credentials = flow.credentials
+    authorization_response = request.url
+    flow.fetch_token(authorization_response=authorization_response)
 
-        with open(TOKEN_FILE, 'w') as token:
-            token.write(credentials.to_json())
+    credentials = flow.credentials
+    with open(TOKEN_FILE, 'w') as token:
+        token.write(credentials.to_json())
 
-        return "Authorization complete! You can now use the bot to upload videos."
-    else:
-        return "No authorization code found."
+    return 'Authorization successful! You can close this window.'
 
-# Function to run the bot
-def run_bot():
-    bot.polling()
-
-if __name__ == "__main__":
-    # Start the bot in a separate thread
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.start()
-
-    # Start the Flask app
+# Function to run the Flask app in a separate thread
+def run_flask():
     app.run(host='0.0.0.0', port=80)
 
+# Start the Flask app
+flask_thread = threading.Thread(target=run_flask)
+flask_thread.start()
 
-
-
-
-
+# Start the Telegram bot
+bot.polling(none_stop=True)
 
 
